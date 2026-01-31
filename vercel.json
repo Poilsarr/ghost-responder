@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/v1/lead-capture",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}
