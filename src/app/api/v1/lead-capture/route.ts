@@ -29,15 +29,17 @@ export async function POST(req: Request) {
       VALUES (${clientId}, ${leadName}, ${leadPhone}, ${serviceType}, ${latency}, ${traceId}, FALSE);
     `;
 
-    // 3. Fire the Telegram Alert with a "Claim" anchor
+  // 3. Fire the Telegram Alert with an Interactive "Claim" Button
+   // 3. Fire the Telegram Alert with the "Interactive" Button
     const message = `🚀 *New Lead: ${client.business_name}*\n\n` +
                     `👤 Name: ${leadName}\n` +
                     `📞 Phone: [${leadPhone}](tel:${leadPhone})\n` +
                     `🛠 Service: ${serviceType}\n` +
                     `⚡ Speed: ${latency}ms\n\n` +
-                    `⚠️ *Status: UNCLAIMED*\n` +
+                    `⚠️ Status: UNCLAIMED\n` +
                     `Please respond to stop the automated alerts!`;
 
+    // ... inside your POST function after the fetch call
     await fetch(`https://api.telegram.org/bot${client.bot_token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -45,6 +47,14 @@ export async function POST(req: Request) {
         chat_id: client.chat_id,
         text: message,
         parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { 
+              text: "✅ CLAIM LEAD & STOP ALERTS", 
+              callback_data: `claim_${traceId}` 
+            }
+          ]]
+        }
       }),
     });
 
@@ -54,4 +64,4 @@ export async function POST(req: Request) {
     console.error('Ghost Engine Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-}
+} // Final closing brace for the POST function
