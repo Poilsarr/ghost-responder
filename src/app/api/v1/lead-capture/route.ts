@@ -20,17 +20,15 @@ export async function POST(req: Request) {
     }
 
     const client = clientRows[0];
+    const latency = Date.now() - startTime;
 
     // 2. Save Lead to Postgres (The Money Trace)
-    // Note: We use the 'is_claimed' column you just added to Neon
-    const latency = Date.now() - startTime;
     await sql`
       INSERT INTO ghost_leads (client_id, lead_name, lead_phone, service_type, latency_ms, trace_id, is_claimed)
       VALUES (${clientId}, ${leadName}, ${leadPhone}, ${serviceType}, ${latency}, ${traceId}, FALSE);
     `;
 
-  // 3. Fire the Telegram Alert with an Interactive "Claim" Button
-   // 3. Fire the Telegram Alert with the "Interactive" Button
+    // 3. Fire the Telegram Alert with the Interactive "Claim" Button
     const message = `🚀 *New Lead: ${client.business_name}*\n\n` +
                     `👤 Name: ${leadName}\n` +
                     `📞 Phone: [${leadPhone}](tel:${leadPhone})\n` +
@@ -39,7 +37,6 @@ export async function POST(req: Request) {
                     `⚠️ Status: UNCLAIMED\n` +
                     `Please respond to stop the automated alerts!`;
 
-    // ... inside your POST function after the fetch call
     await fetch(`https://api.telegram.org/bot${client.bot_token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -64,4 +61,4 @@ export async function POST(req: Request) {
     console.error('Ghost Engine Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-} // Final closing brace for the POST function
+}
