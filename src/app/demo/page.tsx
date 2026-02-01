@@ -1,8 +1,9 @@
-'use client';
-import { useSearchParams } from 'next/navigation';
+"use client";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import LeadForm from '@/components/LeadForm';
 
-export default function DemoPage() {
+function DemoPageContent() {
   const searchParams = useSearchParams();
   const clientId = searchParams.get('clientId');
   const companyName = searchParams.get('name') || "your company";
@@ -40,5 +41,19 @@ export default function DemoPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function DemoPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-black text-white flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl text-center text-zinc-400">Loading demo...</div>
+        </main>
+      }
+    >
+      <DemoPageContent />
+    </Suspense>
   );
 }

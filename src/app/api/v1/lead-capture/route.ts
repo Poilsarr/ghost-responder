@@ -1,88 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { validateLead } from "../../../../middleware/validator";
-import { sendTelegramAlert } from "../../../../lib/telegram";
-import { logLeadToStorage } from "../../../../lib/analytics";
-import { getClientConfig } from "../../../../lib/clients";
+import { sql } from '@vercel/postgres';
+import { NextResponse } from 'next/server';
 
-const buildTraceId = () => `L-${Math.random().toString(36).slice(2, 11).toUpperCase()}`;
-
-export async function POST(req: NextRequest) {
-  const traceId = buildTraceId();
+export async function POST(req: Request) {
   const startTime = Date.now();
-  const timestamp = new Date().toISOString();
-
+  
   try {
-    const payload = await req.json();
-    const clientId =
-      (typeof payload?.clientId === "string" && payload.clientId.trim()) ||
-      req.headers.get("x-client-id") ||
-      "";
+    const body = await req.json();
+    const { clientId, leadName, leadPhone, serviceType, traceId } = body;
 
-    if (!clientId) {
-      throw new Error("Missing clientId");
+    // 1. Fetch Client Config from the Data Fortress
+    const { rows: clientRows } = await sql`
+      SELECT * FROM ghost_clients 
+      WHERE client_id = ${clientId} AND status = 'active'
+      LIMIT 1;
+    `;
+
+    if (clientRows.length === 0) {
+      return NextResponse.json({ error: 'Unauthorized Client' }, { status: 401 });
     }
 
-    const clientConfig = getClientConfig(clientId);
-    const leadData = validateLead(payload);
+    const client = clientRows[0];
 
-    const deliveryStatus = await sendTelegramAlert(leadData, traceId, clientConfig);
+    // 2. Save Lead to Postgres (The Money Trace)
+    // Note: We use the 'is_claimed' column you just added to Neon
+    const latency = Date.now() - startTime;
+    await sql`
+      INSERT INTO ghost_leads (client_id, lead_name, lead_phone, service_type, latency_ms, trace_id, is_claimed)
+      VALUES (${clientId}, ${leadName}, ${leadPhone}, ${serviceType}, ${latency}, ${traceId}, FALSE);
+    `;
 
-    await logLeadToStorage({
-      traceId,
-      clientId,
-      clientName: clientConfig.name,
-      clientTier: clientConfig.tier,
-      latency: Date.now() - startTime,
-      status: deliveryStatus.data.ok ? "DELIVERED" : "FAILED",
-      timestamp,
-      lead: leadData,
+    // 3. Fire the Telegram Alert with a "Claim" anchor
+    const message = `🚀 *New Lead: ${client.business_name}*\n\n` +
+                    `👤 Name: ${leadName}\n` +
+                    `📞 Phone: [${leadPhone}](tel:${leadPhone})\n` +
+                    `🛠 Service: ${serviceType}\n` +
+                    `⚡ Speed: ${latency}ms\n\n` +
+                    `⚠️ *Status: UNCLAIMED*\n` +
+                    `Please respond to stop the automated alerts!`;
+
+    await fetch(`https://api.telegram.org/bot${client.bot_token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: client.chat_id,
+        text: message,
+        parse_mode: 'Markdown',
+      }),
     });
 
-    if (!deliveryStatus.data.ok) {
-      const telegramError =
-        deliveryStatus.data.description ?? `Telegram error (${deliveryStatus.status})`;
-      return NextResponse.json(
-        { success: false, traceId, error: telegramError },
-        { status: 502 }
-      );
-    }
+    return NextResponse.json({ success: true, latency });
 
-    return NextResponse.json(
-      { success: true, traceId, message: "Value Delivered.", client: clientConfig.name },
-      { status: 200 }
-    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "System logic fault.";
-    const isProd = process.env.NODE_ENV === "production";
-
-    await logLeadToStorage({
-      traceId,
-      clientId: req.headers.get("x-client-id") ?? "unknown",
-      latency: Date.now() - startTime,
-      status: "FAILED",
-      timestamp,
-      lead: {
-        name: "Unknown",
-        phone: "Unknown",
-        service: "Unknown",
-      },
-    });
-
-    console.error(`🔴 CRITICAL FAIL [${traceId}]:`, message);
-    if (message.startsWith("Unauthorized Client ID") || message.includes("Missing clientId")) {
-      return NextResponse.json(
-        { success: false, traceId, error: "Invalid Routing" },
-        { status: 401 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, traceId, error: isProd ? "System logic fault." : message },
-      { status: 500 }
-    );
+    console.error('Ghost Engine Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-}
-
-export async function GET() {
-  return NextResponse.json({ status: "healthy", service: "lead-capture" }, { status: 200 });
 }
