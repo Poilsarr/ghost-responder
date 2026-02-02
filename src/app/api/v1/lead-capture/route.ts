@@ -44,10 +44,10 @@ export async function POST(req: Request) {
         ? new https.Agent({ rejectUnauthorized: false })
         : undefined;
 
-    await axios.post(
+    const telegramResponse = await axios.post(
       `https://api.telegram.org/bot${client.bot_token}/sendMessage`,
       {
-        chat_id: client.chat_id, // Removed the extra { here
+        chat_id: client.chat_id,
         text: message,
         parse_mode: 'Markdown',
         reply_markup: {
@@ -59,10 +59,25 @@ export async function POST(req: Request) {
           ]]
         }
       },
-      httpsAgent ? { httpsAgent } : undefined
+      {
+        ...(httpsAgent ? { httpsAgent } : {}),
+        validateStatus: () => true,
+      }
     );
 
-    return NextResponse.json({ success: true, latency });
+    if (telegramResponse.status >= 400) {
+      console.error('Telegram API Error:', telegramResponse.data);
+      return NextResponse.json(
+        {
+          error: 'Failed to send Telegram message',
+          telegram: telegramResponse.data,
+          traceId,
+        },
+        { status: telegramResponse.status }
+      );
+    }
+
+    return NextResponse.json({ success: true, latency, traceId });
 
   } catch (error) {
     console.error('Ghost Engine Error:', error);

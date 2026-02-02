@@ -27,9 +27,16 @@ export default function LeadForm({ clientId, isDemo = false, companyName }: Lead
         throw new Error("Missing clientId in demo URL");
       }
       const result = await sendLead(formData, clientId || undefined);
+      if (result.ok) {
+        setSubmissionState({
+          status: 'success',
+          traceId: result.traceId,
+        });
+        return;
+      }
       setSubmissionState({
-        status: 'success',
-        traceId: result.traceId,
+        status: 'error',
+        error: result.error || 'Failed to send lead',
       });
     } catch (error) {
       setSubmissionState({

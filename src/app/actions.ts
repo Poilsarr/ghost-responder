@@ -2,14 +2,15 @@
 
 import { headers } from "next/headers";
 
-interface LeadData {
-  name: string;
-  address: string;
-  phone: string;
-  service: string;
+interface LeadPayload {
+  clientId: string;
+  leadName: string;
+  leadPhone: string;
+  serviceType: string;
+  traceId: string;
+  address?: string;
   city?: string;
   message?: string;
-  clientId: string;
 }
 
 const getBaseUrl = async () => {
@@ -34,17 +35,22 @@ export async function sendLead(formData: FormData, overrideClientId?: string) {
   const clientId = (overrideClientId ?? process.env.NEXT_PUBLIC_CLIENT_ID ?? "").trim();
 
   if (!clientId) {
-    throw new Error("Missing clientId");
+    return {
+      ok: false,
+      error: "Missing clientId",
+    };
   }
 
-  const leadData: LeadData = {
-    name,
+  const traceId = `trace_${crypto.randomUUID()}`;
+  const leadData: LeadPayload = {
+    clientId,
+    leadName: name,
+    leadPhone: phone,
+    serviceType: service,
+    traceId,
     address,
-    phone,
-    service,
     city: city || undefined,
     message,
-    clientId,
   };
 
   try {
@@ -58,7 +64,16 @@ export async function sendLead(formData: FormData, overrideClientId?: string) {
       body: JSON.stringify(leadData),
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    const result = responseText
+      ? (() => {
+          try {
+            return JSON.parse(responseText);
+          } catch {
+            return { message: responseText };
+          }
+        })()
+      : {};
 
     console.log("[GHOST ENGINE RESPONSE]");
     console.log("Status:", result.status ?? result.success);
@@ -70,12 +85,22 @@ export async function sendLead(formData: FormData, overrideClientId?: string) {
 
     if (!response.ok) {
       console.error("Error:", result.error || result.message);
-      throw new Error(result.error || "Failed to send lead");
+      return {
+        ok: false,
+        error: result.error || result.message || "Failed to send lead",
+      };
     }
 
-    return result;
+    return {
+      ok: true,
+      traceId: result.traceId ?? traceId,
+      ...result,
+    };
   } catch (e) {
     console.error("[GHOST ENGINE ERROR]", e);
-    throw e;
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to send lead",
+    };
   }
 }
