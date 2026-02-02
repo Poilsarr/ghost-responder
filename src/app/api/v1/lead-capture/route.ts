@@ -1,5 +1,7 @@
 import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
+import axios from "axios";
+import https from "https";
 
 export async function POST(req: Request) {
   const startTime = Date.now();
@@ -37,23 +39,28 @@ export async function POST(req: Request) {
                     `⚠️ Status: UNCLAIMED\n` +
                     `Please respond to stop the automated alerts!`;
 
-    await fetch(`https://api.telegram.org/bot${client.bot_token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: client.chat_id,
+    const httpsAgent =
+      process.env.NODE_ENV !== "production"
+        ? new https.Agent({ rejectUnauthorized: false })
+        : undefined;
+
+    await axios.post(
+      `https://api.telegram.org/bot${client.bot_token}/sendMessage`,
+      {
+        chat_id: client.chat_id, // Removed the extra { here
         text: message,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { 
-              text: "✅ CLAIM LEAD & STOP ALERTS", 
-              callback_data: `claim_${traceId}` 
+            {
+              text: "✅ CLAIM LEAD & STOP ALERTS",
+              callback_data: `claim_${traceId}`
             }
           ]]
         }
-      }),
-    });
+      },
+      httpsAgent ? { httpsAgent } : undefined
+    );
 
     return NextResponse.json({ success: true, latency });
 
