@@ -1,11 +1,12 @@
 "use client"
-import { sendLead } from "@/app/actions";
 import { useState } from "react";
 
 interface SubmissionState {
   status: 'idle' | 'loading' | 'success' | 'error';
   traceId?: string;
   error?: string;
+  note?: string;
+  simulated?: boolean;
 }
 
 interface LeadFormProps {
@@ -19,24 +20,52 @@ export default function LeadForm({ clientId, isDemo = false, companyName }: Lead
     status: 'idle',
   });
 
-  async function handleAction(formData: FormData) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSubmissionState({ status: 'loading' });
 
     try {
       if (isDemo && !clientId) {
         throw new Error("Missing clientId in demo URL");
       }
-      const result = await sendLead(formData, clientId || undefined);
-      if (result.ok) {
+
+      const formData = new FormData(event.currentTarget);
+      const payload = {
+        clientId: (clientId ?? process.env.NEXT_PUBLIC_CLIENT_ID ?? "").trim(),
+        leadName: String(formData.get("name") ?? "").trim(),
+        leadPhone: String(formData.get("phone") ?? "").trim(),
+        serviceType: String(formData.get("service") ?? "").trim(),
+        address: String(formData.get("address") ?? "").trim(),
+        city: String(formData.get("city") ?? "").trim() || undefined,
+        message: String(formData.get("message") ?? "").trim() || undefined,
+      };
+
+      if (!payload.clientId) {
+        throw new Error("Missing clientId");
+      }
+
+      const response = await fetch("/api/v1/lead-capture", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok) {
         setSubmissionState({
           status: 'success',
           traceId: result.traceId,
+          note: typeof result.message === "string" ? result.message : undefined,
+          simulated: Boolean(result.simulated),
         });
         return;
       }
       setSubmissionState({
         status: 'error',
-        error: result.error || 'Failed to send lead',
+        error: result.reason || result.error || 'Failed to send lead',
       });
     } catch (error) {
       setSubmissionState({
@@ -60,10 +89,11 @@ export default function LeadForm({ clientId, isDemo = false, companyName }: Lead
       {submissionState.status === 'success' ? (
         <div className="space-y-3">
           <div className="bg-green-500/20 text-green-400 p-4 rounded-lg text-center font-bold border border-green-500/40">
-            ✅ Lead Delivered Successfully
+            {submissionState.simulated ? "✅ Lead Captured Successfully" : "✅ Lead Delivered Successfully"}
           </div>
           <div className="bg-zinc-800 p-3 rounded-lg text-center text-xs text-zinc-400 border border-zinc-700">
             <p className="font-mono">TraceId: {submissionState.traceId}</p>
+            {submissionState.note ? <p className="mt-2">{submissionState.note}</p> : null}
             {isDemo && (
               <p className="mt-2 text-green-400">
                 ✨ Check your phone—your notification should arrive in &lt; 2 seconds!
@@ -93,7 +123,7 @@ export default function LeadForm({ clientId, isDemo = false, companyName }: Lead
           </button>
         </div>
       ) : (
-        <form action={handleAction} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input
             name="name"
             placeholder="Full Name *"

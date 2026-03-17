@@ -6,8 +6,12 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     if (body.callback_query) {
-      const callbackData = body.callback_query.data; // e.g., "claim_strike-final"
-      const traceId = callbackData.split('_')[1];
+      const callbackData = body.callback_query.data;
+      if (typeof callbackData !== "string" || !callbackData.startsWith("claim_")) {
+        return NextResponse.json({ error: "Unsupported callback payload" }, { status: 400 });
+      }
+
+      const traceId = callbackData.slice("claim_".length);
       const chatId = body.callback_query.message.chat.id;
       const messageId = body.callback_query.message.message_id;
 
@@ -16,6 +20,10 @@ export async function POST(req: Request) {
 
       // 2. Get the Bot Token to send the update
       const { rows } = await sql`SELECT bot_token FROM ghost_clients WHERE chat_id = ${chatId.toString()} LIMIT 1;`;
+      if (rows.length === 0 || !rows[0].bot_token) {
+        return NextResponse.json({ error: "Bot token not found for chat" }, { status: 404 });
+      }
+
       const botToken = rows[0].bot_token;
 
       // 3. Edit the original message to show "CLAIMED"

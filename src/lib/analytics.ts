@@ -8,7 +8,7 @@ export interface LeadLogEntry {
   clientName?: string;
   clientTier?: "premium" | "standard";
   latency: number;
-  status: "DELIVERED" | "FAILED";
+  status: "DELIVERED" | "FAILED" | "SIMULATED";
   timestamp: string;
   lead: LeadData;
 }
@@ -45,7 +45,9 @@ export const getAnalyticsSummary = async () => {
     return { averageLatencyMs: 0, deliveredCount: 0 };
   }
 
-  const delivered = entries.filter((entry) => entry.status === "DELIVERED");
+  const delivered = entries.filter(
+    (entry) => entry.status === "DELIVERED" || entry.status === "SIMULATED"
+  );
   const totalLatency = delivered.reduce((sum, entry) => sum + entry.latency, 0);
   const averageLatencyMs = delivered.length > 0 ? totalLatency / delivered.length : 0;
 
